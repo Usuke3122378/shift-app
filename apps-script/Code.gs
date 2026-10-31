@@ -461,16 +461,16 @@ function fillSampleData(month) {
   const ym = parseMonth(month);
   const sheet = ensureMonthSheet(month);
   const dayCount = daysInMonth(ym.year, ym.month);
-  const lastRow = Math.min(sheet.getLastRow(), LAST_MEMBER_ROW);
-  const memberCount = lastRow - FIRST_MEMBER_ROW + 1;
-  if (memberCount < 1) throw new Error('メンバーがいません');
-
-  const types = sheet.getRange(FIRST_MEMBER_ROW, 2, memberCount, 1).getValues();
+  // 「日数」列の数式が最後の行まで入っているので、getLastRow() ではなく名前が入っている行だけを使う
+  const memberCount = LAST_MEMBER_ROW - FIRST_MEMBER_ROW + 1;
+  const members = sheet.getRange(FIRST_MEMBER_ROW, 1, memberCount, 2).getValues();
   const staffIdx = [];
   const partIdx = [];
-  types.forEach(function (t, i) {
-    (String(t[0]) === '社員' ? staffIdx : partIdx).push(i);
+  members.forEach(function (m, i) {
+    if (String(m[0]).trim() === '') return;
+    (String(m[1]) === '社員' ? staffIdx : partIdx).push(i);
   });
+  if (partIdx.length < 5) throw new Error('バイトが5人以上いないとサンプルを作れません');
   const required = sheet.getRange(5, FIRST_DAY_COL, 1, dayCount).getValues()[0];
 
   const values = [];
