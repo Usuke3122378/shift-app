@@ -32,6 +32,10 @@
 
 ![足りない日・再募集](docs/screenshots/06-admin.png)
 
+**作成者用：Google スプレッドシート（黄色＝出された勤務可能日、人数と過不足は自動計算）**
+
+![スプレッドシート](docs/screenshots/07-spreadsheet.png)
+
 ## できること
 
 **バイト（スマホ）**
