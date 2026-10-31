@@ -65,7 +65,7 @@ function doGet(e) {
       case 'month':
         return getMonth(p.month);
       case 'availability':
-        return { days: getAvailability(p.name, p.month) };
+        return getAvailability(p.name, p.month);
       default:
         throw new Error('unknown action: ' + p.action);
     }
@@ -78,7 +78,8 @@ function doPost(e) {
     switch (body.action) {
       case 'submitAvailability':
         submitAvailability(body.name, body.month, body.days);
-        return {};
+        // 書き込んだあとの最新の状態を返す（その間に作成者がシフトを入れていても、アプリがすぐ分かるように）
+        return getAvailability(body.name, body.month);
       default:
         throw new Error('unknown action: ' + body.action);
     }
@@ -171,25 +172,32 @@ function getMonth(month) {
   };
 }
 
-/** その人が勤務可能日として出している日（セルが薄い黄色の日） */
+/**
+ * その人の勤務可能日（セルが薄い黄色の日）と、作成者がもうシフトを入れた日（{日: "L"} の形）。
+ * シフトを入れた日はアプリで外せないようにするために返す（本人の行だけなので公開前でも返してよい）
+ */
 function getAvailability(name, month) {
   const ym = parseMonth(month);
   const sheet = SpreadsheetApp.getActive().getSheetByName(month);
-  if (!sheet) return [];
+  if (!sheet) return { days: [], assigned: {} };
   const row = findMemberRow(sheet, name);
-  if (row === -1) return [];
-  const backgrounds = sheet
-    .getRange(row, FIRST_DAY_COL, 1, daysInMonth(ym.year, ym.month))
-    .getBackgrounds()[0];
+  if (row === -1) return { days: [], assigned: {} };
+  const range = sheet.getRange(row, FIRST_DAY_COL, 1, daysInMonth(ym.year, ym.month));
+  const backgrounds = range.getBackgrounds()[0];
+  const values = range.getDisplayValues()[0];
   const days = [];
+  const assigned = {};
   backgrounds.forEach(function (bg, i) {
     if (bg.toLowerCase() === AVAILABLE_COLOR) days.push(i + 1);
+    const value = String(values[i]).trim();
+    if (value !== '') assigned[i + 1] = value;
   });
-  return days;
+  return { days: days, assigned: assigned };
 }
 
 /**
  * 勤務可能日を提出する（F-03）。その人の行の背景だけを塗り直し、中身の L/F/早/遅 は触らない。
+ * 作成者がもうシフトを入れた日は、背景の色も今のまま残す（アプリでも外せないようにしてある）。
  * シートがなければひな形から作る（F-14）。
  */
 function submitAvailability(name, month, days) {
@@ -213,9 +221,15 @@ function submitAvailability(name, month, days) {
     const sheet = ensureMonthSheet(month);
     let row = findMemberRow(sheet, name);
     if (row === -1) row = appendMemberRow(sheet, member);
+    const range = sheet.getRange(row, FIRST_DAY_COL, 1, dayCount);
+    const current = range.getBackgrounds()[0];
+    const values = range.getDisplayValues()[0];
     const colors = [];
-    for (let d = 1; d <= dayCount; d++) colors.push(selected[d] ? AVAILABLE_COLOR : EMPTY_COLOR);
-    sheet.getRange(row, FIRST_DAY_COL, 1, dayCount).setBackgrounds([colors]);
+    for (let d = 1; d <= dayCount; d++) {
+      if (String(values[d - 1]).trim() !== '') colors.push(current[d - 1]);
+      else colors.push(selected[d] ? AVAILABLE_COLOR : EMPTY_COLOR);
+    }
+    range.setBackgrounds([colors]);
     SpreadsheetApp.flush();
   } finally {
     lock.releaseLock();

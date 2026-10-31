@@ -33,6 +33,14 @@ export type MonthData = {
   rows: ShiftRow[];
 };
 
+/** /api/availability（GET）の返り値。本人の行だけ */
+export type Availability = {
+  /** 勤務可能日として出している日 */
+  days: number[];
+  /** 作成者がもうシフトを入れた日。{ 18: "L" } の形。この日はアプリで外せない */
+  assigned: Record<number, string>;
+};
+
 /** /api/shift の返り値。公開前はシフトの中身（rows）を返さない */
 export type ShiftResponse =
   | (MonthData & { published: true })

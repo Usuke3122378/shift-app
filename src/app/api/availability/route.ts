@@ -1,21 +1,23 @@
 import type { NextRequest } from "next/server";
 import { badRequest, errorResponse, getAvailability, submitAvailability } from "@/lib/apps-script";
 import { daysInMonth, isMonthKey } from "@/lib/dates";
+import type { Availability } from "@/lib/types";
 
-// GET /api/availability?name=佐藤&month=2026-11：その人が出している勤務可能日
+// GET /api/availability?name=佐藤&month=2026-11：その人が出している勤務可能日と、もうシフトが入った日
 export async function GET(request: NextRequest) {
   const name = request.nextUrl.searchParams.get("name")?.trim();
   const month = request.nextUrl.searchParams.get("month");
   if (!name) return badRequest("name がありません");
   if (!isMonthKey(month)) return badRequest("month は 2026-11 の形で指定してください");
   try {
-    return Response.json({ days: await getAvailability(name, month) });
+    const body: Availability = await getAvailability(name, month);
+    return Response.json(body);
   } catch (err) {
     return errorResponse(err);
   }
 }
 
-// POST /api/availability  本文 {name, month, days}：勤務可能日を提出（F-03）
+// POST /api/availability  本文 {name, month, days}：勤務可能日を提出（F-03）。書き込んだあとの最新の状態を返す
 export async function POST(request: NextRequest) {
   let body: { name?: unknown; month?: unknown; days?: unknown };
   try {
@@ -32,8 +34,12 @@ export async function POST(request: NextRequest) {
     return badRequest(`days は 1〜${max} の数字の配列にしてください`);
   }
   try {
-    await submitAvailability(name, month, [...new Set(days as number[])].sort((a, b) => a - b));
-    return Response.json({ ok: true });
+    const result: Availability = await submitAvailability(
+      name,
+      month,
+      [...new Set(days as number[])].sort((a, b) => a - b),
+    );
+    return Response.json(result);
   } catch (err) {
     return errorResponse(err);
   }

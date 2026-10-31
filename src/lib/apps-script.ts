@@ -2,7 +2,7 @@
 // URL は .env.local の APPS_SCRIPT_URL。ブラウザに出さないため、このファイルを Client Component から import するとエラーになる
 import "server-only";
 
-import type { Member, MonthData } from "./types";
+import type { Availability, Member, MonthData } from "./types";
 
 export class AppsScriptError extends Error {}
 
@@ -51,13 +51,15 @@ export async function getMonth(month: string): Promise<MonthData> {
   return { month: data.month, exists: data.exists, published: data.published, days: data.days, rows: data.rows };
 }
 
-export async function getAvailability(name: string, month: string): Promise<number[]> {
-  const data = await callGet<{ days: number[] }>({ action: "availability", name, month });
-  return data.days;
+export async function getAvailability(name: string, month: string): Promise<Availability> {
+  const data = await callGet<Availability>({ action: "availability", name, month });
+  return { days: data.days, assigned: data.assigned };
 }
 
-export async function submitAvailability(name: string, month: string, days: number[]): Promise<void> {
-  await callPost({ action: "submitAvailability", name, month, days });
+/** 提出して、書き込んだあとの最新の状態を返す */
+export async function submitAvailability(name: string, month: string, days: number[]): Promise<Availability> {
+  const data = await callPost<Availability>({ action: "submitAvailability", name, month, days });
+  return { days: data.days, assigned: data.assigned };
 }
 
 /** Route Handler でのエラーの返し方をそろえる */
