@@ -115,20 +115,33 @@ function getMembers() {
     });
 }
 
-/** その月のシートの中身。シートがなければ exists:false */
+/**
+ * その月のシートの中身。シートがなければ exists:false（日付と祝日だけは返す。勤務可能日のカレンダーで使うため）
+ * holiday は祝日名（祝日でなければ空文字）
+ */
 function getMonth(month) {
   const ym = parseMonth(month);
-  const sheet = SpreadsheetApp.getActive().getSheetByName(month);
-  if (!sheet) return { month: month, exists: false, published: false, days: [], rows: [] };
-
   const dayCount = daysInMonth(ym.year, ym.month);
-  const header = sheet
-    .getRange(WEEKDAY_ROW, FIRST_DAY_COL, HOLIDAY_ROW - WEEKDAY_ROW + 1, dayCount)
-    .getDisplayValues();
-  const days = [];
-  for (let i = 0; i < dayCount; i++) {
-    days.push({ day: i + 1, weekday: header[0][i], holiday: header[1][i] });
+  const sheet = SpreadsheetApp.getActive().getSheetByName(month);
+  if (!sheet) {
+    return {
+      month: month,
+      exists: false,
+      published: false,
+      days: buildDays(ym, holidayNames(month)),
+      rows: [],
+    };
   }
+
+  const holidayRange = sheet.getRange(HOLIDAY_ROW, FIRST_DAY_COL, 1, dayCount);
+  const notes = holidayRange.getNotes()[0];
+  const marks = holidayRange.getDisplayValues()[0];
+  const days = buildDays(
+    ym,
+    marks.map(function (mark, i) {
+      return mark === '' ? '' : notes[i] || mark;
+    })
+  );
 
   const rows = [];
   const lastRow = Math.min(sheet.getLastRow(), LAST_MEMBER_ROW);
@@ -253,28 +266,46 @@ function ensureMonthSheet(month) {
  * 列が狭いのでセルには1文字だけ書く（名前を書くと隣のセルにはみ出す）。
  */
 function writeHolidays(sheet, month) {
+  const notes = holidayNames(month);
+  const marks = notes.map(function (n) {
+    return n === '' ? '' : '祝';
+  });
+  const range = sheet.getRange(HOLIDAY_ROW, FIRST_DAY_COL, 1, MAX_DAYS);
+  range.setValues([marks]);
+  range.setNotes([notes]);
+}
+
+/** その月の祝日名（31個の配列。祝日でない日は空文字） */
+function holidayNames(month) {
   const ym = parseMonth(month);
   const calendar =
     CalendarApp.getCalendarById(HOLIDAY_CALENDAR_ID) ||
     CalendarApp.subscribeToCalendar(HOLIDAY_CALENDAR_ID);
   const start = new Date(ym.year, ym.month - 1, 1);
   const end = new Date(ym.year, ym.month, 1);
-  const marks = [];
-  const notes = [];
-  for (let i = 0; i < MAX_DAYS; i++) {
-    marks.push('');
-    notes.push('');
-  }
+  const names = [];
+  for (let i = 0; i < MAX_DAYS; i++) names.push('');
   calendar.getEvents(start, end).forEach(function (ev) {
     const title = ev.getTitle();
     if (!isPublicHoliday(title)) return;
     const i = ev.getAllDayStartDate().getDate() - 1;
-    marks[i] = '祝';
-    notes[i] = notes[i] ? notes[i] + '・' + title : title;
+    names[i] = names[i] ? names[i] + '・' + title : title;
   });
-  const range = sheet.getRange(HOLIDAY_ROW, FIRST_DAY_COL, 1, MAX_DAYS);
-  range.setValues([marks]);
-  range.setNotes([notes]);
+  return names;
+}
+
+const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
+
+function buildDays(ym, holidays) {
+  const days = [];
+  for (let d = 1; d <= daysInMonth(ym.year, ym.month); d++) {
+    days.push({
+      day: d,
+      weekday: WEEKDAYS[new Date(ym.year, ym.month - 1, d).getDay()],
+      holiday: holidays[d - 1] || '',
+    });
+  }
+  return days;
 }
 
 // 国民の祝日（祝日法）の名前。このカレンダーには七五三などの記念日も入るので、名前で見分ける
