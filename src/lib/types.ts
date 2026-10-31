@@ -39,6 +39,8 @@ export type Availability = {
   days: number[];
   /** 作成者がもうシフトを入れた日。{ 18: "L" } の形。この日はアプリで外せない */
   assigned: Record<number, string>;
+  /** その月が公開済み（確定）か。確定した月は勤務可能日を変えられない */
+  published: boolean;
 };
 
 /** /api/shift の返り値。公開前はシフトの中身（rows）を返さない */

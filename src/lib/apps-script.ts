@@ -53,13 +53,13 @@ export async function getMonth(month: string): Promise<MonthData> {
 
 export async function getAvailability(name: string, month: string): Promise<Availability> {
   const data = await callGet<Availability>({ action: "availability", name, month });
-  return { days: data.days, assigned: data.assigned };
+  return { days: data.days, assigned: data.assigned, published: data.published };
 }
 
 /** 提出して、書き込んだあとの最新の状態を返す */
 export async function submitAvailability(name: string, month: string, days: number[]): Promise<Availability> {
   const data = await callPost<Availability>({ action: "submitAvailability", name, month, days });
-  return { days: data.days, assigned: data.assigned };
+  return { days: data.days, assigned: data.assigned, published: data.published };
 }
 
 /** Route Handler でのエラーの返し方をそろえる */

@@ -52,6 +52,9 @@ export function daysInMonth(key: string): number {
   return new Date(Date.UTC(year, month, 0)).getUTCDate();
 }
 
+/** カレンダーの見出し（日曜はじまり） */
+export const WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"] as const;
+
 /** その月の1日が何曜日か（0=日〜6=土）。カレンダーの空きマスに使う */
 export function firstWeekday(key: string): number {
   const { year, month } = parseMonthKey(key);

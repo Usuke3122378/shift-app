@@ -166,22 +166,23 @@ function getMonth(month) {
   return {
     month: month,
     exists: true,
-    published: sheet.getRange(PUBLISH_CELL).getValue() === true,
+    published: isPublished(sheet),
     days: days,
     rows: rows,
   };
 }
 
 /**
- * その人の勤務可能日（セルが薄い黄色の日）と、作成者がもうシフトを入れた日（{日: "L"} の形）。
- * シフトを入れた日はアプリで外せないようにするために返す（本人の行だけなので公開前でも返してよい）
+ * その人の勤務可能日（セルが薄い黄色の日）と、作成者がもうシフトを入れた日（{日: "L"} の形）、その月が公開済みか。
+ * シフトを入れた日・公開済みの月はアプリで変えられないようにするために返す（本人の行だけなので公開前でも返してよい）
  */
 function getAvailability(name, month) {
   const ym = parseMonth(month);
   const sheet = SpreadsheetApp.getActive().getSheetByName(month);
-  if (!sheet) return { days: [], assigned: {} };
+  if (!sheet) return { days: [], assigned: {}, published: false };
+  const published = isPublished(sheet);
   const row = findMemberRow(sheet, name);
-  if (row === -1) return { days: [], assigned: {} };
+  if (row === -1) return { days: [], assigned: {}, published: published };
   const range = sheet.getRange(row, FIRST_DAY_COL, 1, daysInMonth(ym.year, ym.month));
   const backgrounds = range.getBackgrounds()[0];
   const values = range.getDisplayValues()[0];
@@ -192,13 +193,13 @@ function getAvailability(name, month) {
     const value = String(values[i]).trim();
     if (value !== '') assigned[i + 1] = value;
   });
-  return { days: days, assigned: assigned };
+  return { days: days, assigned: assigned, published: published };
 }
 
 /**
  * 勤務可能日を提出する（F-03）。その人の行の背景だけを塗り直し、中身の L/F/早/遅 は触らない。
  * 作成者がもうシフトを入れた日は、背景の色も今のまま残す（アプリでも外せないようにしてある）。
- * シートがなければひな形から作る（F-14）。
+ * 公開済み（確定した）月は変えられない。シートがなければひな形から作る（F-14）。
  */
 function submitAvailability(name, month, days) {
   const ym = parseMonth(month);
@@ -219,6 +220,7 @@ function submitAvailability(name, month, days) {
   lock.waitLock(10000);
   try {
     const sheet = ensureMonthSheet(month);
+    if (isPublished(sheet)) throw new Error('この月のシフトは確定しているので変更できません。作成者に連絡してください');
     let row = findMemberRow(sheet, name);
     if (row === -1) row = appendMemberRow(sheet, member);
     const range = sheet.getRange(row, FIRST_DAY_COL, 1, dayCount);
@@ -570,6 +572,10 @@ function findMemberRow(sheet, name) {
     if (String(names[i][0]).trim() === name) return FIRST_MEMBER_ROW + i;
   }
   return -1;
+}
+
+function isPublished(sheet) {
+  return sheet.getRange(PUBLISH_CELL).getValue() === true;
 }
 
 function getSheetOrThrow(name) {

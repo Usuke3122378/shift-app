@@ -2,12 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { fetchJson } from "@/lib/client-api";
-import { firstWeekday, monthLabel, nextMonthKey } from "@/lib/dates";
+import { firstWeekday, monthLabel, nextMonthKey, WEEKDAY_LABELS } from "@/lib/dates";
 import { useSavedName } from "@/lib/member-storage";
 import { symbolClass } from "@/lib/symbol-style";
 import type { Availability, Day, ShiftResponse } from "@/lib/types";
-
-const WEEK_HEADER = ["日", "月", "火", "水", "木", "金", "土"];
 
 // 画面を開いている間、作成者がスプシで入れたシフトを読み直す間隔
 const REFRESH_MS = 30_000;
@@ -18,6 +16,8 @@ type Loaded = {
   submitted: number[];
   /** 作成者がもうシフトを入れた日（外せない） */
   assigned: Availability["assigned"];
+  /** 公開済み（確定）の月は全部の日が変えられない */
+  published: boolean;
   /** 画面で選んでいる日（まだ提出していない分も含む） */
   selected: Set<number>;
 };
@@ -41,7 +41,9 @@ function merge(prev: Loaded, fresh: Availability): Loaded {
     if (fresh.days.includes(d)) selected.add(d);
     else selected.delete(d);
   }
-  return { ...prev, submitted: fresh.days, assigned: fresh.assigned, selected };
+  // 確定したら、選び途中の分は捨ててスプシの状態をそのまま見せる
+  if (fresh.published) return { ...prev, submitted: fresh.days, assigned: fresh.assigned, published: true, selected: new Set(fresh.days) };
+  return { ...prev, submitted: fresh.days, assigned: fresh.assigned, published: false, selected };
 }
 
 // 「/me/availability」翌月の勤務可能日をタップで選んで提出（F-02・F-03）
@@ -76,6 +78,7 @@ function MemberCalendar({ name, month }: { name: string; month: string }) {
           days: shift.days,
           submitted: availability.days,
           assigned: availability.assigned,
+          published: availability.published,
           selected: new Set(availability.days),
         });
       })
@@ -136,7 +139,7 @@ function MemberCalendar({ name, month }: { name: string; month: string }) {
   function toggle(day: number) {
     setMessage(null);
     setLoaded((prev) => {
-      if (!prev || prev.assigned[day]) return prev;
+      if (!prev || prev.published || prev.assigned[day]) return prev;
       const selected = new Set(prev.selected);
       if (selected.has(day)) selected.delete(day);
       else selected.add(day);
@@ -179,11 +182,17 @@ function MemberCalendar({ name, month }: { name: string; month: string }) {
     <div className="space-y-4">
       <div>
         <h1 className="text-xl font-bold">{monthLabel(month)}の勤務可能日</h1>
-        <p className="text-sm text-zinc-600">入れる日をタップ（もう一度タップで取り消し）。締め切りは毎月20日です</p>
+        {loaded.published ? (
+          <p className="mt-2 rounded-lg bg-zinc-100 p-3 text-sm text-zinc-700">
+            {monthLabel(month)}のシフトは確定しました。出した日は変えられません。変更したいときは作成者に連絡してください
+          </p>
+        ) : (
+          <p className="text-sm text-zinc-600">入れる日をタップ（もう一度タップで取り消し）。締め切りは毎月20日です</p>
+        )}
       </div>
 
       <div className="grid grid-cols-7 gap-1 text-center">
-        {WEEK_HEADER.map((w, i) => (
+        {WEEKDAY_LABELS.map((w, i) => (
           <div
             key={w}
             className={`text-xs font-bold ${i === 0 ? "text-red-600" : i === 6 ? "text-blue-600" : "text-zinc-500"}`}
@@ -214,6 +223,22 @@ function MemberCalendar({ name, month }: { name: string; month: string }) {
               </div>
             );
           }
+          const dayClass = `flex min-h-12 flex-col items-center justify-center rounded-lg border text-lg ${
+            on ? "border-amber-400 bg-amber-200 font-bold" : "border-zinc-200 bg-white"
+          } ${red ? "text-red-600" : blue ? "text-blue-600" : "text-zinc-900"}`;
+          if (loaded.published) {
+            // 確定した月は見るだけ
+            return (
+              <div
+                key={day.day}
+                aria-label={`${day.day}日（${day.weekday}）${on ? "出した日" : ""}`}
+                className={dayClass}
+              >
+                {day.day}
+                {day.holiday && <span className="text-[10px] leading-none">祝</span>}
+              </div>
+            );
+          }
           return (
             <button
               key={day.day}
@@ -221,9 +246,7 @@ function MemberCalendar({ name, month }: { name: string; month: string }) {
               onClick={() => toggle(day.day)}
               aria-pressed={on}
               aria-label={`${day.day}日（${day.weekday}${day.holiday ? `・${day.holiday}` : ""}）`}
-              className={`flex min-h-12 flex-col items-center justify-center rounded-lg border text-lg ${
-                on ? "border-amber-400 bg-amber-200 font-bold" : "border-zinc-200 bg-white"
-              } ${red ? "text-red-600" : blue ? "text-blue-600" : "text-zinc-900"}`}
+              className={dayClass}
             >
               {day.day}
               {day.holiday && <span className="text-[10px] leading-none">祝</span>}
@@ -234,11 +257,11 @@ function MemberCalendar({ name, month }: { name: string; month: string }) {
 
       {/* 画面で黄色になっている日だけを数える（シフトが入ったグレーの日は別に数える） */}
       <p className="text-sm text-zinc-600">
-        選んだ日：{[...loaded.selected].filter((d) => !loaded.assigned[d]).length}日
+        {loaded.published ? "出した日" : "選んだ日"}：{[...loaded.selected].filter((d) => !loaded.assigned[d]).length}日
         {assignedDays(loaded.assigned).length > 0 && `／シフトが入っている日：${assignedDays(loaded.assigned).length}日`}
       </p>
 
-      {assignedDays(loaded.assigned).length > 0 && (
+      {!loaded.published && assignedDays(loaded.assigned).length > 0 && (
         <p className="rounded-lg bg-zinc-100 p-3 text-sm text-zinc-700">
           L・F・早・遅 が付いた日は、もうシフトが決まっているので変えられません。変えたいときは作成者に連絡してください
         </p>
@@ -250,14 +273,16 @@ function MemberCalendar({ name, month }: { name: string; month: string }) {
         </p>
       )}
 
-      <button
-        type="button"
-        onClick={submit}
-        disabled={sending || (alreadySubmitted && !changed)}
-        className="min-h-12 w-full rounded-lg bg-blue-600 text-lg font-bold text-white disabled:bg-zinc-300 disabled:text-zinc-600"
-      >
-        {sending ? "送信中…" : alreadySubmitted && !changed ? "提出済み ✓" : alreadySubmitted ? "出し直す" : "提出する"}
-      </button>
+      {!loaded.published && (
+        <button
+          type="button"
+          onClick={submit}
+          disabled={sending || (alreadySubmitted && !changed)}
+          className="min-h-12 w-full rounded-lg bg-blue-600 text-lg font-bold text-white disabled:bg-zinc-300 disabled:text-zinc-600"
+        >
+          {sending ? "送信中…" : alreadySubmitted && !changed ? "提出済み ✓" : alreadySubmitted ? "出し直す" : "提出する"}
+        </button>
+      )}
     </div>
   );
 }
